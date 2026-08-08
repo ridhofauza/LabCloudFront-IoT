@@ -74,7 +74,6 @@ Resources:
 
           # --- Allow ec2-user to run docker without sudo ---
           usermod -aG docker ec2-user
-          usermod -aG docker ssm-user
 
           # --- Pull the image ---
           docker pull kuduiso/combined-mqtt-ws-server:latest
