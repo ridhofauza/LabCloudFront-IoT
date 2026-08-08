@@ -34,6 +34,7 @@ Resources:
           FromPort: 8883
           ToPort: 8883
           CidrIp: 0.0.0.0/0
+          #SourcePrefixListId: pl-3b927c52 # IPv4 Prefix List CloudFront us-east-1
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -74,6 +75,10 @@ Resources:
 
           # --- Allow ec2-user to run docker without sudo ---
           usermod -aG docker ec2-user
+          
+          # --- Add this manual after connect SSM to EC2 Instance
+          # usermod -aG docker ssm-user
+          # newgrp docker
 
           # --- Pull the image ---
           docker pull kuduiso/combined-mqtt-ws-server:latest

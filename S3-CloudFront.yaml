@@ -5,6 +5,10 @@ Parameters:
   AliasDomain:
     Type: String
     Default: "*.example.com"
+
+  InternalDomainName:
+    Type: String
+    Default: "*.example.com"
   
   CertificateArn:
     Type: String
@@ -55,8 +59,8 @@ Resources:
         Aliases:
           - !Ref AliasDomain
         Origins:
-          - Id: ALBOrigin
-            DomainName: !ImportValue S2b-NLB-NlbDnsName
+          - Id: CustomOrigin
+            DomainName: !Ref InternalDomainName
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               HTTPSPort: 443
@@ -66,7 +70,7 @@ Resources:
             #  - HeaderName: X-Origin-Secret
             #    HeaderValue: !Ref OriginSecretValue
         DefaultCacheBehavior:
-          TargetOriginId: ALBOrigin
+          TargetOriginId: CustomOrigin
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods:
             - GET

@@ -22,10 +22,26 @@ Subscribe (terminal 1)
 
 ``mqtt sub -t 'test/topic' --url ws://localhost:8883``
 
+``mqtt sub -h <hostname> -p 443 -l wss --insecure -t 'test/topic'``
+
 Publish (terminal 2)
 
 ``mqtt pub -t 'test/topic' -m 'hello over ws' --url ws://localhost:8883``
 
+``mqtt pub -h <hostname> -p 443 -l wss --insecure -t
+ 'test/topic' -m 'Hello from MQTT'``
+
 - Check Log Output
 
 ``docker logs -f <container-name-or-id>``
+
+- Test with CURL
+
+``curl -vk \
+  --http1.1 \
+  -H "Origin: null" \
+  -H "Connection: Upgrade" \
+  -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: SGVsbG9XZWJTb2NrZXQ=" \
+  https://<HOSTNAME>/``

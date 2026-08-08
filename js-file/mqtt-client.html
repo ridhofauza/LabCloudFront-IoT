@@ -1,87 +1,223 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
   <meta charset="UTF-8">
-  <title>MQTT over WebSocket Test Client</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MQTT WebSocket Tester</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
-    #log { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; margin-bottom: 10px; font-family: monospace; font-size: 13px; }
-    #log div { margin-bottom: 4px; }
-    input { padding: 6px; margin-right: 4px; }
-    button { padding: 6px 12px; }
-    .row { margin-bottom: 8px; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 20px;
+      background: #f5f5f5
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px #ccc;
+      margin-bottom: 20px
+    }
+
+    input,
+    button {
+      padding: 10px;
+      margin: 5px 0;
+      font-size: 14px
+    }
+
+    input {
+      width: 95%
+    }
+
+    button {
+      cursor: pointer;
+      border: 0;
+      border-radius: 5px;
+      background: #333;
+      color: white
+    }
+
+    button:disabled {
+      opacity: .5
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px
+    }
+
+    #status {
+      font-weight: bold;
+      padding: 10px;
+      border-radius: 5px;
+      background: #eee
+    }
+
+    #log {
+      height: 280px;
+      overflow: auto;
+      background: #111;
+      color: #eee;
+      padding: 12px;
+      font-family: monospace;
+      white-space: pre-wrap
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px
+    }
   </style>
 </head>
+
 <body>
-  <h2>MQTT over WebSocket Test Client</h2>
+  <h1>MQTT WebSocket Tester</h1>
 
-  <div class="row">
-    <input id="brokerUrl" type="text" value="ws://localhost:8883" style="width: 250px;" />
-    <button onclick="connect()">Connect</button>
-    <span id="status">disconnected</span>
+  <div class="card">
+    <div id="status">Disconnected</div>
+
+    <label>Broker Host</label>
+    <input id="host" value="app1.external.example.com">
+
+    <div class="row">
+      <div>
+        <label>Port</label>
+        <input id="port" value="443">
+      </div>
+      <div>
+        <label>WebSocket Path</label>
+        <input id="path" value="/">
+      </div>
+    </div>
+
+    <label>Username (optional)</label>
+    <input id="username" placeholder="username">
+
+    <label>Password (optional)</label>
+    <input id="password" type="password" placeholder="password">
+
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
   </div>
 
-  <div class="row">
-    <input id="subTopic" type="text" placeholder="topic to subscribe" value="test/topic" />
-    <button onclick="subscribe()">Subscribe</button>
+  <div class="card">
+    <h3>Subscribe</h3>
+    <input id="subTopic" value="test/topic">
+    <button id="subscribe" disabled>Subscribe</button>
   </div>
 
-  <div class="row">
-    <input id="pubTopic" type="text" placeholder="topic to publish" value="test/topic" style="width: 140px;" />
-    <input id="pubMsg" type="text" placeholder="message" style="width: 200px;" />
-    <button onclick="publish()">Publish</button>
+  <div class="card">
+    <h3>Publish</h3>
+    <input id="pubTopic" value="test/topic">
+    <input id="message" value="Hello from Web MQTT">
+    <button id="publish" disabled>Publish</button>
   </div>
 
-  <div id="log"></div>
+  <div class="card">
+    <h3>Log</h3>
+    <div id="log"></div>
+  </div>
 
   <script>
-    let client;
+    let client = null;
 
-    function log(text) {
-      const div = document.getElementById('log');
-      const line = document.createElement('div');
-      line.textContent = text;
-      div.appendChild(line);
-      div.scrollTop = div.scrollHeight;
+    const $ = id => document.getElementById(id);
+
+    function log(msg) {
+      const t = new Date().toLocaleTimeString();
+      $("log").textContent += `[${t}] ${msg}\n`;
+      $("log").scrollTop = $("log").scrollHeight;
     }
 
-    function connect() {
-      const url = document.getElementById('brokerUrl').value;
-      client = mqtt.connect(url);
-
-      client.on('connect', () => {
-        document.getElementById('status').textContent = 'connected';
-        log('[connected] ' + url);
-      });
-
-      client.on('message', (topic, message) => {
-        log(`[message] ${topic}: ${message.toString()}`);
-      });
-
-      client.on('close', () => {
-        document.getElementById('status').textContent = 'disconnected';
-        log('[disconnected]');
-      });
-
-      client.on('error', (err) => {
-        log('[error] ' + err.message);
-      });
+    function setStatus(text, connected = false) {
+      $("status").textContent = text;
+      $("status").style.background = connected ? "#d8f5d0" : "#eee";
     }
 
-    function subscribe() {
-      const topic = document.getElementById('subTopic').value;
-      if (!client || !client.connected) return log('[error] not connected');
-      client.subscribe(topic, () => log('[subscribed] ' + topic));
-    }
+    $("connect").onclick = () => {
+      const host = $("host").value.trim();
+      const port = $("port").value.trim();
+      const path = $("path").value.trim() || "/";
+      const username = $("username").value;
+      const password = $("password").value;
 
-    function publish() {
-      const topic = document.getElementById('pubTopic').value;
-      const msg = document.getElementById('pubMsg').value;
-      if (!client || !client.connected) return log('[error] not connected');
-      client.publish(topic, msg);
-      log(`[published] ${topic}: ${msg}`);
-    }
+      const url = `wss://${host}:${port}${path.startsWith("/") ? path : "/" + path}`;
+
+      log(`Connecting to ${url}`);
+      setStatus("Connecting...");
+
+      const options = {
+        clientId: "webtest_" + Math.random().toString(16).slice(2),
+        clean: true,
+        reconnectPeriod: 0
+      };
+
+      if (username) options.username = username;
+      if (password) options.password = password;
+
+      client = mqtt.connect(url, options);
+
+      client.on("connect", () => {
+        setStatus("Connected", true);
+        log("MQTT CONNECT successful");
+        $("connect").disabled = true;
+        $("disconnect").disabled = false;
+        $("subscribe").disabled = false;
+        $("publish").disabled = false;
+      });
+
+      client.on("reconnect", () => {
+        setStatus("Reconnecting...");
+        log("Reconnecting...");
+      });
+
+      client.on("message", (topic, payload) => {
+        log(`MESSAGE topic=${topic} payload=${payload.toString()}`);
+      });
+
+      client.on("error", err => {
+        log(`ERROR: ${err.message}`);
+        setStatus("Error");
+      });
+
+      client.on("close", () => {
+        log("Connection closed");
+        setStatus("Disconnected");
+        $("connect").disabled = false;
+        $("disconnect").disabled = true;
+        $("subscribe").disabled = true;
+        $("publish").disabled = true;
+      });
+    };
+
+    $("disconnect").onclick = () => {
+      if (client) client.end();
+    };
+
+    $("subscribe").onclick = () => {
+      const topic = $("subTopic").value.trim();
+      client.subscribe(topic, err => {
+        if (err) log(`SUBSCRIBE ERROR: ${err.message}`);
+        else log(`SUBSCRIBED: ${topic}`);
+      });
+    };
+
+    $("publish").onclick = () => {
+      const topic = $("pubTopic").value.trim();
+      const message = $("message").value;
+      client.publish(topic, message, err => {
+        if (err) log(`PUBLISH ERROR: ${err.message}`);
+        else log(`PUBLISHED topic=${topic} payload=${message}`);
+      });
+    };
   </script>
 </body>
+
 </html>
