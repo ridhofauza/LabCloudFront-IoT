@@ -2,8 +2,30 @@ const net = require('net');
 const http = require('http');
 const ws = require('websocket-stream');
 
-function startMqttServer(tcpPort, wsPort) {
+function startMqttServer(tcpPort, wsPort, mqttUser, mqttPassword) {
   const aedes = require('aedes')();
+
+  // authenticate the connecting client
+  aedes.authenticate = (client, username, password, callback) => {
+      if (password && username) {
+        password = Buffer.from(password, 'base64').toString();
+        if (username === mqttUser && password === mqttPassword) {
+            return callback(null, true);
+        }
+      }
+      const error = new Error('Authentication Failed!! Invalid user credentials.');
+      console.log('Error ! Authentication failed.')
+      return callback(error, false)
+  }
+
+  // authorizing client to publish on a message topic
+  aedes.authorizePublish = (client, packet, callback) => {
+      if (packet.topic === 'test/topic') {
+          return callback(null);
+      }
+      console.log('Error ! Unauthorized publish to a topic.')
+      return callback(new Error('You are not authorized to publish on this message topic.'));
+  }
 
   const tcpServer = net.createServer(aedes.handle);
   tcpServer.listen(tcpPort, () => {

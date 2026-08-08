@@ -1,7 +1,9 @@
 ## Build
-``docker build -t combined-mqtt-ws-server .``
+``docker build -t kuduiso/combined-mqtt-ws-server:latest .``
 
-``docker run -p 8080:8080 -p 1883:1883 -p 8883:8883 combined-mqtt-ws-server``
+``docker run -d --name combined-server -p 8080:8080 -p 1883:1883 -p 8883:8883 -e MQTT_USERNAME=<USERNAME> -e MQTT_PASSWORD=<STRONG_PASSWORD> kuduiso/combined-mqtt-ws-server:latest``
+
+``docker push kuduiso/combined-mqtt-ws-server:latest``
 
 ## Test
 - Websocket
@@ -14,7 +16,11 @@
 
 ``mqtt sub -t 'test/topic' -h localhost -p 1883``
 
+``mqtt sub -t 'test/topic' -h localhost -p 1883 -u <USERNAME> --password <PASSWORD>``
+
 ``mqtt pub -t 'test/topic' -m 'hello' -h localhost -p 1883``
+
+``mqtt pub -t 'test/topic' -m 'hello' -h localhost -p 1883 -u <USERNAME> --password <PASSWORD>``
 
 - MQTT (Websocket)
 

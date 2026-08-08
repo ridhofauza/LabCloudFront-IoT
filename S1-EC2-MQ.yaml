@@ -93,6 +93,8 @@ Resources:
             -p 8080:8080 \
             -p 1883:1883 \
             -p 8883:8883 \
+            -e MQTT_USERNAME=admin \
+            -e MQTT_PASSWORD=admin123 \
             kuduiso/combined-mqtt-ws-server:latest
 
           # --- Log completion ---

@@ -84,7 +84,7 @@
     <div id="status">Disconnected</div>
 
     <label>Broker Host</label>
-    <input id="host" value="app1.external.example.com">
+    <input id="host" value="wss://app1.external.example.com">
 
     <div class="row">
       <div>
@@ -148,7 +148,7 @@
       const username = $("username").value;
       const password = $("password").value;
 
-      const url = `wss://${host}:${port}${path.startsWith("/") ? path : "/" + path}`;
+      const url = `${host}:${port}${path.startsWith("/") ? path : "/" + path}`;
 
       log(`Connecting to ${url}`);
       setStatus("Connecting...");
