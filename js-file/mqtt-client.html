@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MQTT over WebSocket Test Client</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+    #log { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; margin-bottom: 10px; font-family: monospace; font-size: 13px; }
+    #log div { margin-bottom: 4px; }
+    input { padding: 6px; margin-right: 4px; }
+    button { padding: 6px 12px; }
+    .row { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h2>MQTT over WebSocket Test Client</h2>
+
+  <div class="row">
+    <input id="brokerUrl" type="text" value="ws://localhost:8883" style="width: 250px;" />
+    <button onclick="connect()">Connect</button>
+    <span id="status">disconnected</span>
+  </div>
+
+  <div class="row">
+    <input id="subTopic" type="text" placeholder="topic to subscribe" value="test/topic" />
+    <button onclick="subscribe()">Subscribe</button>
+  </div>
+
+  <div class="row">
+    <input id="pubTopic" type="text" placeholder="topic to publish" value="test/topic" style="width: 140px;" />
+    <input id="pubMsg" type="text" placeholder="message" style="width: 200px;" />
+    <button onclick="publish()">Publish</button>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+    let client;
+
+    function log(text) {
+      const div = document.getElementById('log');
+      const line = document.createElement('div');
+      line.textContent = text;
+      div.appendChild(line);
+      div.scrollTop = div.scrollHeight;
+    }
+
+    function connect() {
+      const url = document.getElementById('brokerUrl').value;
+      client = mqtt.connect(url);
+
+      client.on('connect', () => {
+        document.getElementById('status').textContent = 'connected';
+        log('[connected] ' + url);
+      });
+
+      client.on('message', (topic, message) => {
+        log(`[message] ${topic}: ${message.toString()}`);
+      });
+
+      client.on('close', () => {
+        document.getElementById('status').textContent = 'disconnected';
+        log('[disconnected]');
+      });
+
+      client.on('error', (err) => {
+        log('[error] ' + err.message);
+      });
+    }
+
+    function subscribe() {
+      const topic = document.getElementById('subTopic').value;
+      if (!client || !client.connected) return log('[error] not connected');
+      client.subscribe(topic, () => log('[subscribed] ' + topic));
+    }
+
+    function publish() {
+      const topic = document.getElementById('pubTopic').value;
+      const msg = document.getElementById('pubMsg').value;
+      if (!client || !client.connected) return log('[error] not connected');
+      client.publish(topic, msg);
+      log(`[published] ${topic}: ${msg}`);
+    }
+  </script>
+</body>
+</html>

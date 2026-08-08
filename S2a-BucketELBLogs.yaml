@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create S3 Bucket to Store Load Balancer Logs
+
+# ------------------------- ELB ACCESS-LOG BUCKET -------------------------
+Resources:
+  ElbAccessLogBucket:
+    Type: AWS::S3::Bucket
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: >
+              Access logging intentionally not enabled on this log bucket — it
+              stores access logs; no recursive logging of the log bucket itself.
+    Properties:
+      BucketName: !Sub central-ingress-elb-logs-${AWS::AccountId}-${AWS::Region}
+      # ALB access logs support ONLY SSE-S3 (AES256) — SSE-KMS is not supported.
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules: [{ObjectOwnership: ObjectWriter}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: true
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-logs
+            Status: Enabled
+            ExpirationInDays: 365
+
+  ElbAccessLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ElbAccessLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Deny all non-TLS access (matches proven AllowHTTPSRequestsOnly).
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt ElbAccessLogBucket.Arn
+              - !Sub ${ElbAccessLogBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          - Sid: AlbAccessLogsWrite
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: s3:PutObject
+            Resource: !Sub ${ElbAccessLogBucket.Arn}/*
+          - Sid: NlbAccessLogsWrite
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${ElbAccessLogBucket.Arn}/*
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+          - Sid: NlbAccessLogsAclCheck
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt ElbAccessLogBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+
+Outputs:
+  ElbLogBucketName:
+    Description: ElbLogBucketName
+    Value: !Ref ElbAccessLogBucket
+    Export:
+      Name: ElbLogBucketName

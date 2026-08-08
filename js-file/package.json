@@ -1,0 +1,15 @@
+{
+  "name": "combined-server",
+  "version": "1.0.0",
+  "description": "WebSocket broadcast server + MQTT broker in one Node.js process",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "aedes": "^0.51.3",
+    "websocket-stream": "^5.5.2",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,12 @@
+services:
+  combined-server:
+    build: .
+    ports:
+      - "8080:8080"   # WebSocket broadcast server
+      - "1883:1883"   # MQTT (TCP)
+      - "8883:8883"   # MQTT over WebSocket
+    environment:
+      - WS_PORT=8080
+      - MQTT_PORT=1883
+      - MQTT_WS_PORT=8883
+    restart: unless-stopped

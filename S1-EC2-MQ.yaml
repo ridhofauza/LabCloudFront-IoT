@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a EC2 Instance with MQTT Mosquito
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+  InstanceProfile:
+    Type: String
+    Description: Existing IAM Instance Profile
+    Default: SSMInstanceProfile
+
+Resources:
+  
+  # ------------------------------------------------------------------
+  # Security Groups
+  # ------------------------------------------------------------------
+  BrokerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MQTT (1883) and MQTT-WS (8080) from within the VPC (NLB preserves client source IP but sits in-VPC)
+      VpcId: !ImportValue S0-VPC-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1883
+          ToPort: 1883
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8883
+          ToPort: 8883
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: ec2-mqtt-sg
+  
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      IamInstanceProfile: !Ref InstanceProfile
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          GroupSet:
+            - !Ref BrokerSecurityGroup
+          SubnetId: !ImportValue S0-VPC-PrivateSubnetId
+      Tags:
+        - Key: Name
+          Value: mqtt-broker
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # --- Update system ---
+          yum update -y
+
+          # --- Install Docker (Amazon Linux 2 / 2023) ---
+          yum install -y docker
+
+          # --- Start and enable Docker ---
+          systemctl start docker
+          systemctl enable docker
+
+          # --- Allow ec2-user to run docker without sudo ---
+          usermod -aG docker ec2-user
+          usermod -aG docker ssm-user
+
+          # --- Pull the image ---
+          docker pull kuduiso/combined-mqtt-ws-server:latest
+
+          # --- Run the container ---
+          # 8080 = WebSocket broadcast server
+          # 1883 = MQTT (TCP)
+          # 8883 = MQTT over WebSocket
+          docker run -d \
+            --name combined-server \
+            --restart unless-stopped \
+            -p 8080:8080 \
+            -p 1883:1883 \
+            -p 8883:8883 \
+            kuduiso/combined-mqtt-ws-server:latest
+
+          # --- Log completion ---
+          echo "Docker installed and combined-mqtt-ws-server container started" > /var/log/userdata-complete.log
+
+Outputs:
+  InstanceId:
+    Description: EC2 MQ Server Instance Id
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub "${AWS::StackName}-InstanceId"
+  
+  SecurityGroupId:
+    Description: EC2 MQ Server Security Group Id
+    Value: !Ref BrokerSecurityGroup

@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFront distribution for ALB
+
+Parameters:
+  AliasDomain:
+    Type: String
+    Default: "*.example.com"
+  
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN in us-east-1
+  
+  #LambdaFuncVersion:
+  #  Type: String
+  #  Description: Lambda Function in us-east-1
+
+  #CloudFrontFuncArn:
+  #  Type: String
+  #  Description: CloudFront Function in us-east-1
+  
+  GeoRestrictionType:
+    Type: String
+    Default: whitelist
+    AllowedValues:
+      - whitelist
+      - blacklist
+      - none
+
+  GeoRestrictionLocations:
+    Type: String
+    Default: ID
+    Description: >
+      Comma-separated ISO 3166-1 alpha-2 country codes.
+      Example: ID,SG,MY
+  
+  #OriginSecretValue:
+  #  Type: String
+  #  NoEcho: true
+  #  Description: Shared secret value for the X-Origin-Secret header (ALB lock).
+
+Conditions:
+  UseGeoRestriction: !Not
+    - !Equals [!Ref GeoRestrictionType, none]
+
+Resources:
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true 
+        PriceClass: PriceClass_200
+        Aliases:
+          - !Ref AliasDomain
+        Origins:
+          - Id: ALBOrigin
+            DomainName: !ImportValue S2b-NLB-NlbDnsName
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              HTTPSPort: 443
+              OriginSSLProtocols:
+                - TLSv1.2
+            #OriginCustomHeaders:
+            #  - HeaderName: X-Origin-Secret
+            #    HeaderValue: !Ref OriginSecretValue
+        DefaultCacheBehavior:
+          TargetOriginId: ALBOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - PATCH
+            - POST
+            - DELETE
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 33f36d7e-f396-46d9-90e0-52428a34d9dc
+          #LambdaFunctionAssociations:
+          #  - EventType: origin-request
+          #    LambdaFunctionARN: !Ref LambdaFuncVersion
+          #FunctionAssociations:
+          #  - EventType: viewer-request
+          #    FunctionARN: !Ref CloudFrontFuncArn
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: !Ref GeoRestrictionType
+            Locations: !If
+              - UseGeoRestriction
+              - !Split [",", !Ref GeoRestrictionLocations]
+              - []
+
+Outputs:
+  DistributionId:
+    Value: !Ref Distribution
+    Export:
+      Name: !Sub "${AWS::StackName}-DistributionId"
+
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-DistributionDomainName"

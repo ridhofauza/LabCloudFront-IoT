@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  Template to deploy Public NLB
+
+Parameters:
+  AccountName:
+    Description: An account name that is prefixed to resource names. Avoid including "dev", "staging" and "prod" as this will automatically appended based on the selected Environment.
+    Type: String
+    Default: Test
+
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names.
+    Type: String
+    AllowedValues:
+    - Test
+    - Dev
+    Default: Test
+
+  EnvironmentTag:
+    Description: An environment tagging that is resource tagging.
+    Type: String
+    AllowedValues:
+    - test
+    - dev
+    Default: test
+
+  CostCenter:
+    Description: Used to identify the cost center for the resources
+    Type: String
+    Default: 01234
+
+  OwnerTeam:
+    Description: Used to identify the team responsible for the resource
+    Type: String
+    Default: Test
+
+  OwnerTeamEmail:
+    Description: Used to identify and send notifications to the team responsible for the resource
+    Type: String
+    Default: test@test.com
+
+  Vpc:
+    Description: Prod Digital Platform VPC
+    Type: String
+  
+  PublicSubnetA:
+    Description: Prod Digital Platform Database Subnet Availability Zone A
+    Type: String
+  
+  PublicSubnetB:
+    Description: Prod Digital Platform Database Subnet Availability Zone B
+    Type: String
+
+  SslPolicy:
+    Description: SSL Policy for the NLB Listener
+    Type: String
+    Default: ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09
+  
+  CertificateArn:
+    Description: ACM Certificate ARN for the NLB Listener
+    Type: String
+  
+  EnableElbAccessLogs:
+    Type: String
+    Default: true
+    AllowedValues: 
+      - true
+      - false
+    Description: Enable ALB/NLB access logging to the ElbLogBucketName bucket
+  
+  MqttPort:
+    Type: Number
+    Default: 31616
+    Description: Custom raw-MQTT port exposed on the NLB and the broker
+
+
+Conditions:
+  ElbAccessLogsEnabled: !Equals [!Ref EnableElbAccessLogs, 'true']
+  
+Resources:
+
+# -------------------------------------------------------------------------
+# Create Security Group MQ
+# -------------------------------------------------------------------------
+  MqNlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow all inbound traffic to the NLB
+      VpcId: !Ref Vpc
+      Tags:
+          - Key: Name
+            Value: !Sub ${EnvironmentName}-${AccountName}-CentralIngress-SG-MQ-NLB
+          - Key: Environment
+            Value: !Ref EnvironmentTag
+          - Key: Purpose
+            Value: Central Ingress Security Group for NLB
+          - Key: OwnerTeam
+            Value: !Ref OwnerTeam
+          - Key: OwnerTeamEmail
+            Value: !Ref OwnerTeamEmail
+          - Key: CostCenter
+            Value: !Ref CostCenter
+
+# -------------------------------------------------------------------------
+# Create NLB MQ
+# -------------------------------------------------------------------------
+  MqNlb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+        Name: mq-public-nlb
+        Type: network
+        Scheme: internet-facing
+        SecurityGroups:
+          - !Ref MqNlbSecurityGroup
+        Subnets:
+            - !Ref PublicSubnetA
+            - !Ref PublicSubnetB
+        LoadBalancerAttributes:
+          - Key: load_balancing.cross_zone.enabled
+            Value: "true"
+          - !If
+            - ElbAccessLogsEnabled
+            - Key: access_logs.s3.enabled
+              Value: 'true'
+            - !Ref AWS::NoValue
+          - !If
+            - ElbAccessLogsEnabled
+            - Key: access_logs.s3.bucket
+              Value: !ImportValue ElbLogBucketName
+            - !Ref AWS::NoValue
+          - !If
+            - ElbAccessLogsEnabled
+            - Key: access_logs.s3.prefix
+              Value: nlb
+            - !Ref AWS::NoValue
+        Tags:
+            - Key: Name
+              Value: !Sub ${EnvironmentName}-${AccountName}-MQ-PublicNLB
+            - Key: Environment
+              Value: !Ref EnvironmentTag
+            - Key: Purpose
+              Value: Central Ingress Public Network Load Balancer
+            - Key: OwnerTeam
+              Value: !Ref OwnerTeam
+            - Key: OwnerTeamEmail
+              Value: !Ref OwnerTeamEmail
+            - Key: CostCenter
+              Value: !Ref CostCenter
+
+  # Target group for MQTT-WebSocket, fronted by CloudFront on 80
+  TgWebSocket:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: tg-mqtt-ws
+      VpcId: !Ref Vpc
+      TargetType: instance
+      Protocol: TCP
+      Port: 8080
+      HealthCheckProtocol: TCP
+      HealthCheckIntervalSeconds: 10
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Targets:
+        - Id: !ImportValue S1-EC2-MQ-InstanceId
+          Port: 8080
+
+  # Target group for raw MQTT, tested directly against the NLB (bypasses CloudFront)
+  TgRawMqtt:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: tg-mqtt-raw
+      VpcId: !Ref Vpc
+      TargetType: instance
+      Protocol: TCP
+      Port: !Ref MqttPort
+      HealthCheckProtocol: TCP
+      HealthCheckIntervalSeconds: 10
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Targets:
+        - Id: !ImportValue S1-EC2-MQ-InstanceId
+          Port: !Ref MqttPort
+
+  # Listener
+  ListenerHttp80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MqNlb
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TgWebSocket
+
+  ListenerMqttCustom:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MqNlb
+      Port: !Ref MqttPort
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TgRawMqtt
+
+  ListenerMqtt443:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MqNlb
+      Protocol: TCP
+      Port: 443
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TgRawMqtt
+  
+  #IotNlbListener443:
+  #  Type: AWS::ElasticLoadBalancingV2::Listener
+  #  Properties:
+  #    LoadBalancerArn: !Ref MqNlb
+  #    Protocol: TLS
+  #    Port: 443
+  #    SslPolicy: !Ref SslPolicy
+  #    Certificates:
+  #      - CertificateArn: !Ref CertificateArn
+  #    DefaultActions:
+  #      - Type: forward
+  #        TargetGroupArn: !Ref TgRawMqtt
+
+Outputs:
+  NlbDnsName:
+    Value: !GetAtt MqNlb.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-NlbDnsName"
