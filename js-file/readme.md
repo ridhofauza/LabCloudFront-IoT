@@ -45,3 +45,6 @@ Publish (terminal 2)
   -H "Sec-WebSocket-Version: 13" \
   -H "Sec-WebSocket-Key: SGVsbG9XZWJTb2NrZXQ=" \
   https://<HOSTNAME>/``
+
+  ## Run HTTP Server Localhost with Python3
+  ``python3 -m http.server 8080``
